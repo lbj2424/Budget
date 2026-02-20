@@ -30,6 +30,15 @@
             align-items: center;
             margin-bottom: 20px;
         }
+        .nav-button {
+            background-color: #3b82f6;
+            color: white;
+            padding: 10px 15px;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .nav-button:hover { background-color: #2563eb; }
         select {
             padding: 10px;
             font-size: 16px;
@@ -88,9 +97,12 @@
 
     <div class="header-controls">
         <h1>Budget Dashboard</h1>
-        <select id="monthFilter" onchange="filterData()">
-            <option value="All">All Months</option>
-        </select>
+        <div>
+            <a href="category.html" class="nav-button">View Category Analysis &rarr;</a>
+            <select id="monthFilter" onchange="filterData()" style="margin-left: 10px;">
+                <option value="All">All Months</option>
+            </select>
+        </div>
     </div>
 
     <div class="chart-grid">
@@ -118,6 +130,7 @@
             <thead>
                 <tr>
                     <th>Date</th>
+                    <th>Description</th>
                     <th>Category</th>
                     <th>Amount</th>
                 </tr>
@@ -128,7 +141,6 @@
     </div>
 
     <script>
-        // Your CSV Links
         const transactionsUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ0BPaxJnZ-wURJi6wYoYnMIHNGye-vQb_EXmtzX0VnABkMTdYOLj0M7r51UxXJF6ceyifAoBtpV2RN/pub?gid=0&single=true&output=csv";
         const categoriesUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ0BPaxJnZ-wURJi6wYoYnMIHNGye-vQb_EXmtzX0VnABkMTdYOLj0M7r51UxXJF6ceyifAoBtpV2RN/pub?gid=1570419210&single=true&output=csv"; 
         
@@ -139,7 +151,6 @@
         let chartInstance = null;
         let savingsChartInstance = null;
 
-        // HELPER: Safely turns commas/spaces into pure numbers
         function parseAmount(val) {
             if (val === null || val === undefined || val === '') return 0;
             if (typeof val === 'number') return val;
@@ -147,14 +158,12 @@
             return Number(cleaned) || 0;
         }
 
-        // Fetch Transactions
         Papa.parse(transactionsUrl, {
             download: true,
             header: true,
             dynamicTyping: true,
             complete: function(transactionResults) {
                 
-                // HELPER: Strips out accidental invisible spaces from Google Sheet headers
                 const normalizedData = transactionResults.data.map(row => {
                     const newRow = {};
                     for (let key in row) {
@@ -176,14 +185,12 @@
             }
         });
 
-        // Fetch Categories
         function fetchCategories() {
             Papa.parse(categoriesUrl, {
                 download: true,
                 header: true,
                 dynamicTyping: true,
                 complete: function(categoryResults) {
-                    
                     const normalizedCats = categoryResults.data.map(row => {
                         const newRow = {};
                         for (let key in row) {
@@ -251,6 +258,7 @@
                 const row = document.createElement("tr");
                 row.innerHTML = `
                     <td>${t.Date}</td>
+                    <td>${t['Transaction Description'] || 'N/A'}</td>
                     <td>${t.Category || 'Uncategorized'}</td>
                     <td>$${parseAmount(t.Amount).toFixed(2)}</td>
                 `;
