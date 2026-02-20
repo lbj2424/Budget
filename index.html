@@ -48,7 +48,6 @@
         }
         th { background-color: #f8f9fa; }
         
-        /* Layout for the charts to sit side-by-side on larger screens */
         .chart-grid {
             display: grid;
             grid-template-columns: 1fr;
@@ -59,6 +58,30 @@
             .chart-grid {
                 grid-template-columns: 1fr 1fr;
             }
+        }
+
+        /* Styles for the new Goal Progress Bars */
+        .goal-item {
+            margin-bottom: 15px;
+        }
+        .goal-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .progress-bar-container {
+            width: 100%;
+            background-color: #e2e8f0;
+            border-radius: 10px;
+            height: 12px;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.5s ease;
         }
     </style>
 </head>
@@ -84,6 +107,13 @@
     </div>
 
     <div class="card">
+        <h2>Budget Goals Progress</h2>
+        <div id="goalsContainer">
+            <p style="color: #666; font-style: italic;">Loading goals...</p>
+        </div>
+    </div>
+
+    <div class="card">
         <h2>Transactions</h2>
         <table id="transactionsTable">
             <thead>
@@ -99,43 +129,67 @@
     </div>
 
     <script>
-        // Your published CSV link
-        const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ0BPaxJnZ-wURJi6wYoYnMIHNGye-vQb_EXmtzX0VnABkMTdYOLj0M7r51UxXJF6ceyifAoBtpV2RN/pub?gid=0&single=true&output=csv";
+        // 1. YOUR CSV LINKS
+        const transactionsUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ0BPaxJnZ-wURJi6wYoYnMIHNGye-vQb_EXmtzX0VnABkMTdYOLj0M7r51UxXJF6ceyifAoBtpV2RN/pub?gid=0&single=true&output=csv";
+        
+        // REPLACE THIS LINK WITH YOUR PUBLISHED "CATEGORIES" CSV LINK
+        const categoriesUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ0BPaxJnZ-wURJi6wYoYnMIHNGye-vQb_EXmtzX0VnABkMTdYOLj0M7r51UxXJF6ceyifAoBtpV2RN/pub?gid=1570419210&single=true&output=csv"; 
         
         let allTransactions = [];
         let savingsData = [];
+        let categoryGoals = []; // New array to store budget limits
+        
         let chartInstance = null;
         let savingsChartInstance = null;
 
-        // 1. Fetch and Parse the CSV
-        Papa.parse(csvUrl, {
+        // Fetch Transactions First
+        Papa.parse(transactionsUrl, {
             download: true,
             header: true,
-            dynamicTyping: true, // Automatically converts numbers
-            complete: function(results) {
+            dynamicTyping: true,
+            complete: function(transactionResults) {
                 
-                // Get Transactions (requires Date and Amount)
-                allTransactions = results.data.filter(row => row.Date && row.Amount !== null);
+                allTransactions = transactionResults.data.filter(row => row.Date && row.Amount !== null);
                 
-                // Get Savings History (requires Savings Date and Savings Amount)
-                savingsData = results.data
+                savingsData = transactionResults.data
                     .filter(row => row['Savings Date'] && row['Savings Amount'] !== null)
                     .map(row => ({
                         date: row['Savings Date'],
                         amount: row['Savings Amount']
                     }));
 
-                setupDashboard();
-                renderSavingsChart(); // Draw savings line chart once
+                // Fetch Categories Next
+                fetchCategories();
             }
         });
+
+        // Fetch Categories
+        function fetchCategories() {
+            Papa.parse(categoriesUrl, {
+                download: true,
+                header: true,
+                dynamicTyping: true,
+                complete: function(categoryResults) {
+                    // Filter valid goals
+                    categoryGoals = categoryResults.data.filter(row => row.Category && row.Goal !== null);
+                    
+                    // Once both are downloaded, setup the dashboard
+                    setupDashboard();
+                    renderSavingsChart();
+                },
+                error: function() {
+                    document.getElementById('goalsContainer').innerHTML = "<p style='color:red;'>Could not load goals. Did you add the Categories CSV link?</p>";
+                    setupDashboard();
+                    renderSavingsChart();
+                }
+            });
+        }
 
         function setupDashboard() {
             populateMonthDropdown();
             filterData(); 
         }
 
-        // 2. Extract unique months for the dropdown
         function populateMonthDropdown() {
             const dropdown = document.getElementById("monthFilter");
             const months = new Set();
@@ -157,7 +211,6 @@
             });
         }
 
-        // 3. Filter data based on dropdown selection
         function filterData() {
             const selectedMonth = document.getElementById("monthFilter").value;
             
@@ -168,9 +221,9 @@
 
             renderTable(filteredData);
             renderChart(filteredData);
+            renderGoals(filteredData); // Trigger the new goals render
         }
 
-        // 4. Draw the Table
         function renderTable(data) {
             const tbody = document.getElementById("tableBody");
             tbody.innerHTML = ""; 
@@ -186,7 +239,6 @@
             });
         }
 
-        // 5. Draw the Category Bar Chart
         function renderChart(data) {
             const categoryTotals = {};
             data.forEach(t => {
@@ -223,9 +275,58 @@
             });
         }
 
-        // 6. Draw the Savings Line Chart
+        // NEW: Draw the Goals Progress Bars
+        function renderGoals(currentMonthData) {
+            const container = document.getElementById("goalsContainer");
+            container.innerHTML = ""; // clear loading text
+
+            if (categoryGoals.length === 0) {
+                container.innerHTML = "<p>No goals found. Check your Categories sheet!</p>";
+                return;
+            }
+
+            // Sum up spending for the currently selected month
+            const categoryTotals = {};
+            currentMonthData.forEach(t => {
+                const cat = t.Category || 'Uncategorized';
+                categoryTotals[cat] = (categoryTotals[cat] || 0) + Number(t.Amount);
+            });
+
+            // Create a progress bar for each goal
+            categoryGoals.forEach(goalData => {
+                const categoryName = goalData.Category;
+                const budgetLimit = Number(goalData.Goal);
+                const spentAmount = categoryTotals[categoryName] || 0;
+                
+                // Calculate percentage (cap at 100% for the visual bar)
+                let percentSpent = (spentAmount / budgetLimit) * 100;
+                let displayPercent = Math.min(percentSpent, 100); 
+
+                // Change bar color based on how close to the limit you are
+                let barColor = "#3b82f6"; // Blue (default)
+                if (percentSpent >= 100) {
+                    barColor = "#ef4444"; // Red (over budget)
+                } else if (percentSpent >= 80) {
+                    barColor = "#f59e0b"; // Orange/Yellow (close to limit)
+                }
+
+                const itemHtml = `
+                    <div class="goal-item">
+                        <div class="goal-labels">
+                            <span><strong>${categoryName}</strong> ($${spentAmount.toFixed(2)} / $${budgetLimit.toFixed(2)})</span>
+                            <span style="color: ${barColor}">${percentSpent.toFixed(0)}%</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" style="width: ${displayPercent}%; background-color: ${barColor};"></div>
+                        </div>
+                    </div>
+                `;
+                
+                container.innerHTML += itemHtml;
+            });
+        }
+
         function renderSavingsChart() {
-            // Sort dates chronologically so the line graph flows left to right
             savingsData.sort((a, b) => new Date(a.date) - new Date(b.date));
 
             const labels = savingsData.map(s => s.date);
@@ -244,20 +345,17 @@
                     datasets: [{
                         label: 'Discover Balance ($)',
                         data: values,
-                        borderColor: '#10b981', // Green line
+                        borderColor: '#10b981', 
                         backgroundColor: 'rgba(16, 185, 129, 0.2)',
                         borderWidth: 2,
                         fill: true,
-                        tension: 0.3 // Adds a slight curve to the line
+                        tension: 0.3 
                     }]
                 },
                 options: {
                     responsive: true,
                     scales: {
-                        y: { 
-                            // This ensures the graph zooms in on your actual balance instead of starting at $0
-                            beginAtZero: false 
-                        }
+                        y: { beginAtZero: false }
                     }
                 }
             });
