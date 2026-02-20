@@ -60,7 +60,6 @@
             }
         }
 
-        /* Styles for the new Goal Progress Bars */
         .goal-item {
             margin-bottom: 15px;
         }
@@ -129,36 +128,50 @@
     </div>
 
     <script>
-        // 1. YOUR CSV LINKS
+        // Your CSV Links
         const transactionsUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ0BPaxJnZ-wURJi6wYoYnMIHNGye-vQb_EXmtzX0VnABkMTdYOLj0M7r51UxXJF6ceyifAoBtpV2RN/pub?gid=0&single=true&output=csv";
-        
-        // REPLACE THIS LINK WITH YOUR PUBLISHED "CATEGORIES" CSV LINK
         const categoriesUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ0BPaxJnZ-wURJi6wYoYnMIHNGye-vQb_EXmtzX0VnABkMTdYOLj0M7r51UxXJF6ceyifAoBtpV2RN/pub?gid=1570419210&single=true&output=csv"; 
         
         let allTransactions = [];
         let savingsData = [];
-        let categoryGoals = []; // New array to store budget limits
+        let categoryGoals = []; 
         
         let chartInstance = null;
         let savingsChartInstance = null;
 
-        // Fetch Transactions First
+        // HELPER: Safely turns commas/spaces into pure numbers
+        function parseAmount(val) {
+            if (val === null || val === undefined || val === '') return 0;
+            if (typeof val === 'number') return val;
+            const cleaned = val.toString().replace(/[^0-9.-]+/g, "");
+            return Number(cleaned) || 0;
+        }
+
+        // Fetch Transactions
         Papa.parse(transactionsUrl, {
             download: true,
             header: true,
             dynamicTyping: true,
             complete: function(transactionResults) {
                 
-                allTransactions = transactionResults.data.filter(row => row.Date && row.Amount !== null);
+                // HELPER: Strips out accidental invisible spaces from Google Sheet headers
+                const normalizedData = transactionResults.data.map(row => {
+                    const newRow = {};
+                    for (let key in row) {
+                        if (key) newRow[key.trim()] = row[key];
+                    }
+                    return newRow;
+                });
+
+                allTransactions = normalizedData.filter(row => row.Date && row.Amount !== null && row.Amount !== undefined && row.Amount !== '');
                 
-                savingsData = transactionResults.data
-                    .filter(row => row['Savings Date'] && row['Savings Amount'] !== null)
+                savingsData = normalizedData
+                    .filter(row => row['Savings Date'] && row['Savings Amount'] !== null && row['Savings Amount'] !== undefined && row['Savings Amount'] !== '')
                     .map(row => ({
                         date: row['Savings Date'],
-                        amount: row['Savings Amount']
+                        amount: parseAmount(row['Savings Amount'])
                     }));
 
-                // Fetch Categories Next
                 fetchCategories();
             }
         });
@@ -170,15 +183,21 @@
                 header: true,
                 dynamicTyping: true,
                 complete: function(categoryResults) {
-                    // Filter valid goals
-                    categoryGoals = categoryResults.data.filter(row => row.Category && row.Goal !== null);
                     
-                    // Once both are downloaded, setup the dashboard
+                    const normalizedCats = categoryResults.data.map(row => {
+                        const newRow = {};
+                        for (let key in row) {
+                            if (key) newRow[key.trim()] = row[key];
+                        }
+                        return newRow;
+                    });
+
+                    categoryGoals = normalizedCats.filter(row => row.Category && row.Goal !== null && row.Goal !== undefined);
                     setupDashboard();
                     renderSavingsChart();
                 },
                 error: function() {
-                    document.getElementById('goalsContainer').innerHTML = "<p style='color:red;'>Could not load goals. Did you add the Categories CSV link?</p>";
+                    document.getElementById('goalsContainer').innerHTML = "<p style='color:red;'>Could not load goals.</p>";
                     setupDashboard();
                     renderSavingsChart();
                 }
@@ -221,7 +240,7 @@
 
             renderTable(filteredData);
             renderChart(filteredData);
-            renderGoals(filteredData); // Trigger the new goals render
+            renderGoals(filteredData); 
         }
 
         function renderTable(data) {
@@ -233,7 +252,7 @@
                 row.innerHTML = `
                     <td>${t.Date}</td>
                     <td>${t.Category || 'Uncategorized'}</td>
-                    <td>$${Number(t.Amount).toFixed(2)}</td>
+                    <td>$${parseAmount(t.Amount).toFixed(2)}</td>
                 `;
                 tbody.appendChild(row);
             });
@@ -243,7 +262,7 @@
             const categoryTotals = {};
             data.forEach(t => {
                 const cat = t.Category || 'Uncategorized';
-                categoryTotals[cat] = (categoryTotals[cat] || 0) + Number(t.Amount);
+                categoryTotals[cat] = (categoryTotals[cat] || 0) + parseAmount(t.Amount);
             });
 
             const labels = Object.keys(categoryTotals);
@@ -275,39 +294,34 @@
             });
         }
 
-        // NEW: Draw the Goals Progress Bars
         function renderGoals(currentMonthData) {
             const container = document.getElementById("goalsContainer");
-            container.innerHTML = ""; // clear loading text
+            container.innerHTML = ""; 
 
             if (categoryGoals.length === 0) {
-                container.innerHTML = "<p>No goals found. Check your Categories sheet!</p>";
+                container.innerHTML = "<p>No goals found.</p>";
                 return;
             }
 
-            // Sum up spending for the currently selected month
             const categoryTotals = {};
             currentMonthData.forEach(t => {
                 const cat = t.Category || 'Uncategorized';
-                categoryTotals[cat] = (categoryTotals[cat] || 0) + Number(t.Amount);
+                categoryTotals[cat] = (categoryTotals[cat] || 0) + parseAmount(t.Amount);
             });
 
-            // Create a progress bar for each goal
             categoryGoals.forEach(goalData => {
                 const categoryName = goalData.Category;
-                const budgetLimit = Number(goalData.Goal);
+                const budgetLimit = parseAmount(goalData.Goal);
                 const spentAmount = categoryTotals[categoryName] || 0;
                 
-                // Calculate percentage (cap at 100% for the visual bar)
-                let percentSpent = (spentAmount / budgetLimit) * 100;
+                let percentSpent = budgetLimit > 0 ? (spentAmount / budgetLimit) * 100 : 0;
                 let displayPercent = Math.min(percentSpent, 100); 
 
-                // Change bar color based on how close to the limit you are
-                let barColor = "#3b82f6"; // Blue (default)
+                let barColor = "#3b82f6"; 
                 if (percentSpent >= 100) {
-                    barColor = "#ef4444"; // Red (over budget)
+                    barColor = "#ef4444"; 
                 } else if (percentSpent >= 80) {
-                    barColor = "#f59e0b"; // Orange/Yellow (close to limit)
+                    barColor = "#f59e0b"; 
                 }
 
                 const itemHtml = `
