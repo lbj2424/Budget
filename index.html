@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Budget Tracker</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f6f8;
+            color: #333;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        select {
+            padding: 10px;
+            font-size: 16px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+        th { background-color: #f8f9fa; }
+    </style>
+</head>
+<body>
+
+    <div class="header-controls">
+        <h1>Budget Dashboard</h1>
+        <select id="monthFilter" onchange="filterData()">
+            <option value="All">All Months</option>
+            </select>
+    </div>
+
+    <div class="card">
+        <h2>Spending by Category</h2>
+        <canvas id="spendingChart" height="100"></canvas>
+    </div>
+
+    <div class="card">
+        <h2>Transactions</h2>
+        <table id="transactionsTable">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Category</th>
+                    <th>Amount</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                </tbody>
+        </table>
+    </div>
+
+    <script>
+        // Your published CSV link
+        const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ0BPaxJnZ-wURJi6wYoYnMIHNGye-vQb_EXmtzX0VnABkMTdYOLj0M7r51UxXJF6ceyifAoBtpV2RN/pub?gid=0&single=true&output=csv";
+        
+        let allTransactions = [];
+        let chartInstance = null;
+
+        // 1. Fetch and Parse the CSV
+        Papa.parse(csvUrl, {
+            download: true,
+            header: true,
+            dynamicTyping: true, // Automatically converts numbers
+            complete: function(results) {
+                // Filter out any completely empty rows
+                allTransactions = results.data.filter(row => row.Date && row.Amount);
+                setupDashboard();
+            }
+        });
+
+        function setupDashboard() {
+            populateMonthDropdown();
+            filterData(); // Initial render for "All Months"
+        }
+
+        // 2. Extract unique months for the dropdown
+        function populateMonthDropdown() {
+            const dropdown = document.getElementById("monthFilter");
+            const months = new Set();
+            
+            allTransactions.forEach(t => {
+                // Assumes date format is something like MM/DD/YYYY
+                const dateObj = new Date(t.Date);
+                if (!isNaN(dateObj)) {
+                    const monthYear = dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
+                    months.add(monthYear);
+                    // Temporarily store this formatted string on the object for easier filtering later
+                    t.monthYear = monthYear; 
+                }
+            });
+
+            months.forEach(month => {
+                const option = document.createElement("option");
+                option.value = month;
+                option.textContent = month;
+                dropdown.appendChild(option);
+            });
+        }
+
+        // 3. Filter data based on dropdown selection
+        function filterData() {
+            const selectedMonth = document.getElementById("monthFilter").value;
+            
+            let filteredData = allTransactions;
+            if (selectedMonth !== "All") {
+                filteredData = allTransactions.filter(t => t.monthYear === selectedMonth);
+            }
+
+            renderTable(filteredData);
+            renderChart(filteredData);
+        }
+
+        // 4. Draw the Table
+        function renderTable(data) {
+            const tbody = document.getElementById("tableBody");
+            tbody.innerHTML = ""; // Clear existing rows
+
+            data.forEach(t => {
+                const row = document.createElement("tr");
+                row.innerHTML = `
+                    <td>${t.Date}</td>
+                    <td>${t.Category || 'Uncategorized'}</td>
+                    <td>$${Number(t.Amount).toFixed(2)}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // 5. Draw the Chart.js Visual
+        function renderChart(data) {
+            // Group spending by category
+            const categoryTotals = {};
+            data.forEach(t => {
+                const cat = t.Category || 'Uncategorized';
+                categoryTotals[cat] = (categoryTotals[cat] || 0) + Number(t.Amount);
+            });
+
+            const labels = Object.keys(categoryTotals);
+            const values = Object.values(categoryTotals);
+
+            const ctx = document.getElementById('spendingChart').getContext('2d');
+            
+            // Destroy the old chart if it exists so we can draw a new one
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Total Spent ($)',
+                        data: values,
+                        backgroundColor: '#3b82f6',
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
