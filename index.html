@@ -241,24 +241,41 @@
             const selectedMonth = document.getElementById("monthFilter").value;
             
             let filteredData = allTransactions;
+            let monthMultiplier = 1;
+
             if (selectedMonth !== "All") {
                 filteredData = allTransactions.filter(t => t.monthYear === selectedMonth);
+                monthMultiplier = 1;
+            } else {
+                // Count how many unique months exist in our transaction data to scale the goals
+                const uniqueMonths = new Set(allTransactions.map(t => t.monthYear));
+                monthMultiplier = uniqueMonths.size > 0 ? uniqueMonths.size : 1;
             }
 
             renderTable(filteredData);
             renderChart(filteredData);
-            renderGoals(filteredData); 
+            renderGoals(filteredData, monthMultiplier); 
         }
 
         function renderTable(data) {
             const tbody = document.getElementById("tableBody");
             tbody.innerHTML = ""; 
 
+            if (data.length === 0) {
+                tbody.innerHTML = "<tr><td colspan='4' style='text-align:center;'>No transactions found.</td></tr>";
+                return;
+            }
+
             data.forEach(t => {
                 const row = document.createElement("tr");
+                
+                // Smart search for the description column to bypass invisible spaces or newlines
+                let descKey = Object.keys(t).find(k => k.toLowerCase().includes('description'));
+                let description = descKey ? t[descKey] : 'N/A';
+                
                 row.innerHTML = `
                     <td>${t.Date}</td>
-                    <td>${t['Transaction Description'] || 'N/A'}</td>
+                    <td>${description}</td>
                     <td>${t.Category || 'Uncategorized'}</td>
                     <td>$${parseAmount(t.Amount).toFixed(2)}</td>
                 `;
@@ -302,7 +319,7 @@
             });
         }
 
-        function renderGoals(currentMonthData) {
+        function renderGoals(currentMonthData, multiplier) {
             const container = document.getElementById("goalsContainer");
             container.innerHTML = ""; 
 
@@ -319,7 +336,11 @@
 
             categoryGoals.forEach(goalData => {
                 const categoryName = goalData.Category;
-                const budgetLimit = parseAmount(goalData.Goal);
+                
+                // Multiply the baseline goal by the amount of months we are viewing
+                const baseBudgetLimit = parseAmount(goalData.Goal);
+                const budgetLimit = baseBudgetLimit * multiplier;
+                
                 const spentAmount = categoryTotals[categoryName] || 0;
                 
                 let percentSpent = budgetLimit > 0 ? (spentAmount / budgetLimit) * 100 : 0;
