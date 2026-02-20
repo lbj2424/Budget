@@ -24,6 +24,17 @@
             margin-bottom: 20px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
+        .summary-card {
+            background-color: #3b82f6;
+            color: white;
+            text-align: center;
+            padding: 25px;
+        }
+        .summary-card h2 {
+            margin: 0;
+            font-size: 2rem;
+            font-weight: 600;
+        }
         .header-controls {
             display: flex;
             justify-content: space-between;
@@ -103,6 +114,10 @@
                 <option value="All">All Months</option>
             </select>
         </div>
+    </div>
+
+    <div class="card summary-card">
+        <h2>Total Spent: <span id="totalSpendingDisplay">$0.00</span></h2>
     </div>
 
     <div class="chart-grid">
@@ -247,10 +262,13 @@
                 filteredData = allTransactions.filter(t => t.monthYear === selectedMonth);
                 monthMultiplier = 1;
             } else {
-                // Count how many unique months exist in our transaction data to scale the goals
                 const uniqueMonths = new Set(allTransactions.map(t => t.monthYear));
                 monthMultiplier = uniqueMonths.size > 0 ? uniqueMonths.size : 1;
             }
+
+            // Calculate and display total spending
+            const totalSpent = filteredData.reduce((sum, t) => sum + parseAmount(t.Amount), 0);
+            document.getElementById("totalSpendingDisplay").innerText = `$${totalSpent.toFixed(2)}`;
 
             renderTable(filteredData);
             renderChart(filteredData);
@@ -269,7 +287,6 @@
             data.forEach(t => {
                 const row = document.createElement("tr");
                 
-                // Smart search for the description column to bypass invisible spaces or newlines
                 let descKey = Object.keys(t).find(k => k.toLowerCase().includes('description'));
                 let description = descKey ? t[descKey] : 'N/A';
                 
@@ -337,7 +354,6 @@
             categoryGoals.forEach(goalData => {
                 const categoryName = goalData.Category;
                 
-                // Multiply the baseline goal by the amount of months we are viewing
                 const baseBudgetLimit = parseAmount(goalData.Goal);
                 const budgetLimit = baseBudgetLimit * multiplier;
                 
