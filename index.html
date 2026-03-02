@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>My Budget Tracker</title>
-    
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
 
@@ -24,7 +24,30 @@
             margin-bottom: 20px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        
+
+        /* Loading Overlay */
+        #loadingOverlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: #f4f6f8;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            gap: 15px;
+        }
+        #loadingOverlay p { color: #666; font-size: 1rem; margin: 0; }
+        .spinner {
+            width: 44px;
+            height: 44px;
+            border: 4px solid #e2e8f0;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
         /* Mobile-first Header */
         .header-controls {
             display: flex;
@@ -40,7 +63,7 @@
             flex-direction: column;
             gap: 10px;
         }
-        
+
         /* Mobile-first Summary Grid */
         .summary-grid {
             display: grid;
@@ -66,7 +89,7 @@
             font-weight: bold;
             margin-top: 5px;
         }
-        .spent-card { background-color: #3b82f6; } 
+        .spent-card { background-color: #3b82f6; }
         .income-card { background-color: #10b981; }
 
         .nav-button {
@@ -87,25 +110,52 @@
             width: 100%;
             box-sizing: border-box;
         }
-        
+
         /* Smooth scrolling table for iOS */
         .table-container {
             overflow-x: auto;
-            -webkit-overflow-scrolling: touch; 
+            -webkit-overflow-scrolling: touch;
         }
         table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 10px;
-            min-width: 500px; /* Forces table to stay readable and scroll instead of squish */
+            min-width: 500px;
         }
         th, td {
             text-align: left;
             padding: 12px;
             border-bottom: 1px solid #ddd;
         }
-        th { background-color: #f8f9fa; }
-        
+        th {
+            background-color: #f8f9fa;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        /* Sortable columns */
+        .sortable-col {
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+        }
+        .sortable-col:hover { background-color: #e9ecef; }
+        .sort-icon { font-size: 0.7rem; color: #bbb; margin-left: 4px; }
+        .sort-icon.active { color: #3b82f6; }
+
+        /* Search input */
+        .search-input {
+            width: 100%;
+            padding: 10px 12px;
+            font-size: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-sizing: border-box;
+            margin-bottom: 12px;
+        }
+        .search-input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+
         /* Mobile-first Chart Grid */
         .chart-grid {
             display: grid;
@@ -134,6 +184,12 @@
             border-radius: 10px;
             transition: width 0.5s ease;
         }
+        .goal-remaining {
+            font-size: 12px;
+            text-align: right;
+            margin-top: 4px;
+            font-weight: 500;
+        }
 
         /* Desktop Adjustments */
         @media (min-width: 768px) {
@@ -148,7 +204,7 @@
                 align-items: center;
             }
             select { width: auto; }
-            .summary-grid { grid-template-columns: 1fr 1fr; }
+            .summary-grid { grid-template-columns: repeat(2, 1fr); }
             .chart-grid { grid-template-columns: 1fr 1fr; }
             .summary-card h2 { font-size: 1.5rem; }
             .summary-card .amount { font-size: 2.5rem; margin-top: 10px; }
@@ -156,6 +212,11 @@
     </style>
 </head>
 <body>
+
+    <div id="loadingOverlay">
+        <div class="spinner"></div>
+        <p>Loading your budget data...</p>
+    </div>
 
     <div class="header-controls">
         <h1>Budget Dashboard</h1>
@@ -176,6 +237,14 @@
             <h2>Total Income</h2>
             <span class="amount" id="totalIncomeDisplay">$0.00</span>
         </div>
+        <div class="summary-card" id="netCard" style="background-color: #10b981;">
+            <h2>Net Balance</h2>
+            <span class="amount" id="netBalanceDisplay">$0.00</span>
+        </div>
+        <div class="summary-card" id="rateCard" style="background-color: #f59e0b;">
+            <h2>Savings Rate</h2>
+            <span class="amount" id="savingsRateDisplay">0.0%</span>
+        </div>
     </div>
 
     <div class="chart-grid">
@@ -183,11 +252,16 @@
             <h2>Spending by Category</h2>
             <canvas id="spendingChart"></canvas>
         </div>
-        
+
         <div class="card" style="margin-bottom: 0;">
             <h2>Savings Growth</h2>
             <canvas id="savingsChart"></canvas>
         </div>
+    </div>
+
+    <div class="card">
+        <h2>Monthly Spending Trend</h2>
+        <canvas id="monthlyTrendChart"></canvas>
     </div>
 
     <div class="card">
@@ -199,14 +273,15 @@
 
     <div class="card">
         <h2>Transactions</h2>
+        <input type="text" id="searchInput" class="search-input" placeholder="Search by description, category, or date..." oninput="applySearchAndSort()">
         <div class="table-container">
             <table id="transactionsTable">
                 <thead>
                     <tr>
-                        <th>Date</th>
-                        <th>Description</th>
-                        <th>Category</th>
-                        <th>Amount</th>
+                        <th class="sortable-col" onclick="handleSort('date')">Date <span class="sort-icon" id="sort-icon-date">↕</span></th>
+                        <th class="sortable-col" onclick="handleSort('description')">Description <span class="sort-icon" id="sort-icon-description">↕</span></th>
+                        <th class="sortable-col" onclick="handleSort('category')">Category <span class="sort-icon" id="sort-icon-category">↕</span></th>
+                        <th class="sortable-col" onclick="handleSort('amount')">Amount <span class="sort-icon" id="sort-icon-amount">↕</span></th>
                     </tr>
                 </thead>
                 <tbody id="tableBody">
@@ -217,14 +292,19 @@
 
     <script>
         const transactionsUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ0BPaxJnZ-wURJi6wYoYnMIHNGye-vQb_EXmtzX0VnABkMTdYOLj0M7r51UxXJF6ceyifAoBtpV2RN/pub?gid=0&single=true&output=csv";
-        const categoriesUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ0BPaxJnZ-wURJi6wYoYnMIHNGye-vQb_EXmtzX0VnABkMTdYOLj0M7r51UxXJF6ceyifAoBtpV2RN/pub?gid=1570419210&single=true&output=csv"; 
-        
+        const categoriesUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ0BPaxJnZ-wURJi6wYoYnMIHNGye-vQb_EXmtzX0VnABkMTdYOLj0M7r51UxXJF6ceyifAoBtpV2RN/pub?gid=1570419210&single=true&output=csv";
+
         let allTransactions = [];
         let savingsData = [];
-        let categoryGoals = []; 
-        
+        let categoryGoals = [];
+        let monthFilteredData = [];
+
         let chartInstance = null;
         let savingsChartInstance = null;
+        let monthlyTrendChartInstance = null;
+
+        let sortColumn = null;
+        let sortDirection = 'asc';
 
         function parseAmount(val) {
             if (val === null || val === undefined || val === '') return 0;
@@ -247,7 +327,7 @@
                 });
 
                 allTransactions = normalizedData.filter(row => row.Date && row.Amount !== null && row.Amount !== undefined && row.Amount !== '');
-                
+
                 savingsData = normalizedData
                     .filter(row => row['Savings Date'] && row['Savings Amount'] !== null && row['Savings Amount'] !== undefined && row['Savings Amount'] !== '')
                     .map(row => ({
@@ -276,30 +356,33 @@
                     categoryGoals = normalizedCats.filter(row => row.Category && row.Goal !== null && row.Goal !== undefined);
                     setupDashboard();
                     renderSavingsChart();
+                    document.getElementById('loadingOverlay').style.display = 'none';
                 },
                 error: function() {
                     document.getElementById('goalsContainer').innerHTML = "<p style='color:red;'>Could not load goals.</p>";
                     setupDashboard();
                     renderSavingsChart();
+                    document.getElementById('loadingOverlay').style.display = 'none';
                 }
             });
         }
 
         function setupDashboard() {
             populateMonthDropdown();
-            filterData(); 
+            filterData();
+            renderMonthlyTrendChart();
         }
 
         function populateMonthDropdown() {
             const dropdown = document.getElementById("monthFilter");
             const months = new Set();
-            
+
             allTransactions.forEach(t => {
                 const dateObj = new Date(t.Date);
                 if (!isNaN(dateObj)) {
                     const monthYear = dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
                     months.add(monthYear);
-                    t.monthYear = monthYear; 
+                    t.monthYear = monthYear;
                 }
             });
 
@@ -313,17 +396,18 @@
 
         function filterData() {
             const selectedMonth = document.getElementById("monthFilter").value;
-            
+
             let filteredData = allTransactions;
             let monthMultiplier = 1;
 
             if (selectedMonth !== "All") {
                 filteredData = allTransactions.filter(t => t.monthYear === selectedMonth);
-                monthMultiplier = 1;
             } else {
                 const uniqueMonths = new Set(allTransactions.map(t => t.monthYear));
                 monthMultiplier = uniqueMonths.size > 0 ? uniqueMonths.size : 1;
             }
+
+            monthFilteredData = filteredData;
 
             let totalSpent = 0;
             let totalIncome = 0;
@@ -337,17 +421,90 @@
                 }
             });
 
+            const netBalance = totalIncome - totalSpent;
+            const savingsRate = totalIncome > 0 ? (netBalance / totalIncome) * 100 : 0;
+
             document.getElementById("totalSpendingDisplay").innerText = `$${totalSpent.toFixed(2)}`;
             document.getElementById("totalIncomeDisplay").innerText = `$${totalIncome.toFixed(2)}`;
 
-            renderTable(filteredData);
+            const netCard = document.getElementById("netCard");
+            document.getElementById("netBalanceDisplay").innerText = `${netBalance >= 0 ? '+' : ''}$${netBalance.toFixed(2)}`;
+            netCard.style.backgroundColor = netBalance >= 0 ? '#10b981' : '#ef4444';
+
+            const rateCard = document.getElementById("rateCard");
+            document.getElementById("savingsRateDisplay").innerText = `${savingsRate.toFixed(1)}%`;
+            rateCard.style.backgroundColor = savingsRate >= 20 ? '#10b981' : savingsRate >= 0 ? '#f59e0b' : '#ef4444';
+
             renderChart(filteredData);
-            renderGoals(filteredData, monthMultiplier); 
+            renderGoals(filteredData, monthMultiplier);
+            applySearchAndSort();
+        }
+
+        function handleSort(column) {
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'asc';
+            }
+            updateSortIcons();
+            applySearchAndSort();
+        }
+
+        function updateSortIcons() {
+            ['date', 'description', 'category', 'amount'].forEach(col => {
+                const icon = document.getElementById(`sort-icon-${col}`);
+                if (icon) {
+                    icon.textContent = col === sortColumn ? (sortDirection === 'asc' ? '▲' : '▼') : '↕';
+                    icon.className = col === sortColumn ? 'sort-icon active' : 'sort-icon';
+                }
+            });
+        }
+
+        function applySearchAndSort() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            let data = monthFilteredData;
+
+            if (searchTerm) {
+                data = data.filter(t => {
+                    const descKey = Object.keys(t).find(k => k.toLowerCase().includes('description'));
+                    const desc = descKey ? (t[descKey] || '').toString() : '';
+                    return desc.toLowerCase().includes(searchTerm) ||
+                           (t.Category || '').toLowerCase().includes(searchTerm) ||
+                           (t.Date || '').toString().toLowerCase().includes(searchTerm);
+                });
+            }
+
+            if (sortColumn) {
+                data = [...data].sort((a, b) => {
+                    let aVal, bVal;
+                    if (sortColumn === 'amount') {
+                        aVal = parseAmount(a.Amount);
+                        bVal = parseAmount(b.Amount);
+                    } else if (sortColumn === 'date') {
+                        aVal = new Date(a.Date).getTime();
+                        bVal = new Date(b.Date).getTime();
+                    } else if (sortColumn === 'description') {
+                        const descKeyA = Object.keys(a).find(k => k.toLowerCase().includes('description'));
+                        const descKeyB = Object.keys(b).find(k => k.toLowerCase().includes('description'));
+                        aVal = (descKeyA ? a[descKeyA] : '') || '';
+                        bVal = (descKeyB ? b[descKeyB] : '') || '';
+                    } else if (sortColumn === 'category') {
+                        aVal = a.Category || '';
+                        bVal = b.Category || '';
+                    }
+                    if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+                    if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+                    return 0;
+                });
+            }
+
+            renderTable(data);
         }
 
         function renderTable(data) {
             const tbody = document.getElementById("tableBody");
-            tbody.innerHTML = ""; 
+            tbody.innerHTML = "";
 
             if (data.length === 0) {
                 tbody.innerHTML = "<tr><td colspan='4' style='text-align:center;'>No transactions found.</td></tr>";
@@ -358,7 +515,7 @@
                 const row = document.createElement("tr");
                 let descKey = Object.keys(t).find(k => k.toLowerCase().includes('description'));
                 let description = descKey ? t[descKey] : 'N/A';
-                
+
                 row.innerHTML = `
                     <td>${t.Date}</td>
                     <td>${description}</td>
@@ -382,7 +539,7 @@
             const values = Object.values(categoryTotals);
 
             const ctx = document.getElementById('spendingChart').getContext('2d');
-            
+
             if (chartInstance) {
                 chartInstance.destroy();
             }
@@ -409,7 +566,7 @@
 
         function renderGoals(currentMonthData, multiplier) {
             const container = document.getElementById("goalsContainer");
-            container.innerHTML = ""; 
+            container.innerHTML = "";
 
             if (categoryGoals.length === 0) {
                 container.innerHTML = "<p>No goals found.</p>";
@@ -427,17 +584,29 @@
                 const baseBudgetLimit = parseAmount(goalData.Goal);
                 const budgetLimit = baseBudgetLimit * multiplier;
                 const spentAmount = categoryTotals[categoryName] || 0;
-                
-                let percentSpent = budgetLimit > 0 ? (spentAmount / budgetLimit) * 100 : 0;
-                let displayPercent = Math.min(percentSpent, 100); 
 
-                let barColor = "#3b82f6"; 
+                let percentSpent = budgetLimit > 0 ? (spentAmount / budgetLimit) * 100 : 0;
+                let displayPercent = Math.min(percentSpent, 100);
+
+                let barColor = "#3b82f6";
                 if (categoryName.toLowerCase() === 'income') {
-                    if (percentSpent >= 100) barColor = "#10b981"; 
-                    else if (percentSpent >= 80) barColor = "#3b82f6"; 
+                    if (percentSpent >= 100) barColor = "#10b981";
+                    else if (percentSpent >= 80) barColor = "#3b82f6";
                 } else {
-                    if (percentSpent >= 100) barColor = "#ef4444"; 
-                    else if (percentSpent >= 80) barColor = "#f59e0b"; 
+                    if (percentSpent >= 100) barColor = "#ef4444";
+                    else if (percentSpent >= 80) barColor = "#f59e0b";
+                }
+
+                const remaining = budgetLimit - spentAmount;
+                let remainingText;
+                if (categoryName.toLowerCase() === 'income') {
+                    remainingText = remaining >= 0
+                        ? `$${remaining.toFixed(2)} to goal`
+                        : `$${Math.abs(remaining).toFixed(2)} over goal`;
+                } else {
+                    remainingText = remaining >= 0
+                        ? `$${remaining.toFixed(2)} remaining`
+                        : `$${Math.abs(remaining).toFixed(2)} over budget`;
                 }
 
                 const itemHtml = `
@@ -449,9 +618,52 @@
                         <div class="progress-bar-container">
                             <div class="progress-bar-fill" style="width: ${displayPercent}%; background-color: ${barColor};"></div>
                         </div>
+                        <div class="goal-remaining" style="color: ${barColor};">${remainingText}</div>
                     </div>
                 `;
                 container.innerHTML += itemHtml;
+            });
+        }
+
+        function renderMonthlyTrendChart() {
+            const monthsMap = new Map();
+            allTransactions.forEach(t => {
+                if (t.monthYear && t.Date && !monthsMap.has(t.monthYear)) {
+                    const d = new Date(t.Date);
+                    if (!isNaN(d)) monthsMap.set(t.monthYear, new Date(d.getFullYear(), d.getMonth(), 1).getTime());
+                }
+            });
+
+            const sortedMonths = Array.from(monthsMap.keys()).sort((a, b) => monthsMap.get(a) - monthsMap.get(b));
+
+            const monthlyTotals = {};
+            sortedMonths.forEach(m => monthlyTotals[m] = 0);
+            allTransactions.forEach(t => {
+                if (t.monthYear && !(t.Category && t.Category.toLowerCase() === 'income')) {
+                    monthlyTotals[t.monthYear] += parseAmount(t.Amount);
+                }
+            });
+
+            const ctx = document.getElementById('monthlyTrendChart').getContext('2d');
+            if (monthlyTrendChartInstance) monthlyTrendChartInstance.destroy();
+
+            monthlyTrendChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: sortedMonths,
+                    datasets: [{
+                        label: 'Total Spending ($)',
+                        data: sortedMonths.map(m => monthlyTotals[m]),
+                        backgroundColor: 'rgba(59, 130, 246, 0.75)',
+                        borderColor: '#3b82f6',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: { y: { beginAtZero: true } }
+                }
             });
         }
 
@@ -461,7 +673,7 @@
             const values = savingsData.map(s => s.amount);
 
             const ctx = document.getElementById('savingsChart').getContext('2d');
-            
+
             if (savingsChartInstance) {
                 savingsChartInstance.destroy();
             }
@@ -473,11 +685,11 @@
                     datasets: [{
                         label: 'Discover Balance ($)',
                         data: values,
-                        borderColor: '#10b981', 
+                        borderColor: '#10b981',
                         backgroundColor: 'rgba(16, 185, 129, 0.2)',
                         borderWidth: 2,
                         fill: true,
-                        tension: 0.3 
+                        tension: 0.3
                     }]
                 },
                 options: {
