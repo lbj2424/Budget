@@ -253,11 +253,21 @@
             <canvas id="spendingChart"></canvas>
         </div>
 
+    </div>
+
+    <div class="chart-grid">
         <div class="card" style="margin-bottom: 0;">
-            <h2>Savings Growth</h2>
+            <h2>Discover Savings</h2>
             <canvas id="savingsChart"></canvas>
         </div>
-    </div>
+        <div class="card" style="margin-bottom: 0;">
+            <h2>ROTH IRA</h2>
+            <canvas id="rothIraChart"></canvas>
+        </div>
+        <div class="card" style="margin-bottom: 0;">
+            <h2>Luke+Aubrey's Stocks</h2>
+            <canvas id="stocksChart"></canvas>
+        </div>
 
     <div class="card">
         <h2>Monthly Spending Trend</h2>
@@ -303,6 +313,8 @@
 
         let chartInstance = null;
         let savingsChartInstance = null;
+        let rothIraChartInstance = null;
+        let stocksChartInstance = null;
         let monthlyTrendChartInstance = null;
 
         let sortColumn = null;
@@ -372,12 +384,16 @@
                     categoryGoals = normalizedCats.filter(row => row.Category && row.Goal !== null && row.Goal !== undefined);
                     setupDashboard();
                     renderSavingsChart();
+                    renderRothIraChart();
+                    renderStocksChart();
                     document.getElementById('loadingOverlay').style.display = 'none';
                 },
                 error: function() {
                     document.getElementById('goalsContainer').innerHTML = "<p style='color:red;'>Could not load goals.</p>";
                     setupDashboard();
                     renderSavingsChart();
+                    renderRothIraChart();
+                    renderStocksChart();
                     document.getElementById('loadingOverlay').style.display = 'none';
                 }
             });
@@ -685,57 +701,64 @@
 
         function renderSavingsChart() {
             savingsData.sort((a, b) => new Date(a.date) - new Date(b.date));
-            rothIraData.sort((a, b) => new Date(a.date) - new Date(b.date));
-            stocksData.sort((a, b) => new Date(a.date) - new Date(b.date));
-
-            const labels = savingsData.map(s => s.date);
-
-            const ctx = document.getElementById('savingsChart').getContext('2d');
-
-            if (savingsChartInstance) {
-                savingsChartInstance.destroy();
-            }
-
-            savingsChartInstance = new Chart(ctx, {
+            if (savingsChartInstance) savingsChartInstance.destroy();
+            savingsChartInstance = new Chart(document.getElementById('savingsChart').getContext('2d'), {
                 type: 'line',
                 data: {
-                    labels: labels,
-                    datasets: [
-                        {
-                            label: 'Discover Balance ($)',
-                            data: savingsData.map(s => s.amount),
-                            borderColor: '#10b981',
-                            backgroundColor: 'rgba(16, 185, 129, 0.2)',
-                            borderWidth: 2,
-                            fill: true,
-                            tension: 0.3
-                        },
-                        {
-                            label: 'ROTH IRA ($)',
-                            data: rothIraData.map(s => s.amount),
-                            borderColor: '#3b82f6',
-                            backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                            borderWidth: 2,
-                            fill: true,
-                            tension: 0.3
-                        },
-                        {
-                            label: 'Luke+Aubreys Stocks ($)',
-                            data: stocksData.map(s => s.amount),
-                            borderColor: '#f59e0b',
-                            backgroundColor: 'rgba(245, 158, 11, 0.2)',
-                            borderWidth: 2,
-                            fill: true,
-                            tension: 0.3
-                        }
-                    ]
+                    labels: savingsData.map(s => s.date),
+                    datasets: [{
+                        label: 'Discover Balance ($)',
+                        data: savingsData.map(s => s.amount),
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.3
+                    }]
                 },
-                options: {
-                    responsive: true,
-                    scales: {
-                        y: { beginAtZero: false }
-                    }
-                }
+                options: { responsive: true, scales: { y: { beginAtZero: false } } }
+            });
+        }
+
+        function renderRothIraChart() {
+            rothIraData.sort((a, b) => new Date(a.date) - new Date(b.date));
+            if (rothIraChartInstance) rothIraChartInstance.destroy();
+            rothIraChartInstance = new Chart(document.getElementById('rothIraChart').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: rothIraData.map(s => s.date),
+                    datasets: [{
+                        label: 'ROTH IRA ($)',
+                        data: rothIraData.map(s => s.amount),
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: { responsive: true, scales: { y: { beginAtZero: false } } }
+            });
+        }
+
+        function renderStocksChart() {
+            stocksData.sort((a, b) => new Date(a.date) - new Date(b.date));
+            if (stocksChartInstance) stocksChartInstance.destroy();
+            stocksChartInstance = new Chart(document.getElementById('stocksChart').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: stocksData.map(s => s.date),
+                    datasets: [{
+                        label: 'Luke+Aubreys Stocks ($)',
+                        data: stocksData.map(s => s.amount),
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: { responsive: true, scales: { y: { beginAtZero: false } } }
             });
         }
     </script>
